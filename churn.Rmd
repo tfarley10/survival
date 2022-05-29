@@ -1,0 +1,86 @@
+---
+title: "lung"
+author: "Ted Farley"
+date: "1/8/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(survival)
+library(survminer)
+library(tidyverse)
+
+```
+
+```{r}
+regime <- read_csv("data/regimes.csv") %>% 
+  select(regime_id = leaderspellreg,
+         democracy,
+         duration,
+         observed)
+  
+
+regime %>% 
+  mutate(ended = observed == 1) %>% 
+  uncount(duration) %>% 
+  group_by(regime_id) %>% 
+  mutate(time = row_number(),
+         regime_ends = time == max(time) & ended == TRUE) %>% 
+  group_by(time) %>% 
+  summarise(n = n(),
+            n_ended = sum(regime_ends),
+            hazard = (n - n_ended)/n) %>% 
+  mutate(survival = accumulate(hazard, `*`))
+  
+```
+
+
+
+```{r}
+telecom <- read_csv("https://raw.githubusercontent.com/treselle-systems/customer_churn_analysis/master/WA_Fn-UseC_-Telco-Customer-Churn.csv") %>% 
+  janitor::clean_names()
+
+telecom <- 
+telecom %>% 
+  mutate(churn2 = churn == "Yes")
+
+
+fakedata <- telecom %>% 
+  filter(churn2 == T) %>% 
+  mutate(group = "Ignoring censoring") %>% 
+  full_join(mutate(telecom, group = "With censoring"))
+
+(fit2 <- survfit(Surv(tenure, churn2) ~ group, data = fakedata))
+
+
+ggsurvplot(
+    fit = fit2, 
+    xlab = "Days", 
+    ylab = "Overall survival probability",
+    risk.table = T,
+    break.x.by = 10
+    )
+```
+
+```{r}
+# d <- 
+telecom %>% 
+  select(customer_id, churn = churn2, tenure) %>% 
+  uncount(tenure) %>% 
+  group_by(customer_id) %>% 
+  mutate(time = row_number(),
+         is_dropout = time == max(time),
+         is_churned = is_dropout & churn) %>% 
+  group_by(time) %>% 
+  summarise(n = n(),
+            n_churned = sum(is_churned),
+            hazard = (n-n_churned)/n,
+            ) %>% 
+  
+  mutate(survival = accumulate(hazard, .f = `*`))
+```
+
